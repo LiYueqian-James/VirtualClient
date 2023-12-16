@@ -1,0 +1,43 @@
+{
+  "Description": "Nvidia GPU Driver Installation Dependency",
+  "Metadata": {
+    "RecommendedMinimumExecutionTime": "00:10:00",
+    "SupportedPlatforms": "win-x64, linux-x64",
+    "SupportedOperatingSystems": "Windows, Linux",
+    "SupportedGpuModelOnWindows": "t4,grid",
+    "SupportedLinuxGpuModel": "all",
+    "SupportedLinuxDistros": "Ubuntu",
+    "SpecialRequirements": "This is Nvidia GPU Driver dependency. It can only be installed on the system having an Nvidia GPU card/chip."
+  },
+  "Parameters": {
+    "Username": "",
+    "LinuxLocalRunFile": null,
+    "LinuxCudaVersion": null,
+    "LinuxDriverVersion": null,
+    "BlobName": ""
+  },
+  "Dependencies": [
+    {
+      "Type": "DependencyPackageInstallation",
+      "Parameters": {
+        "Scenario": "InstallNvidiaGPUDriverPackage",
+        "BlobContainer": "packages",
+        "BlobName": "$.Parameters.BlobName",
+        "PackageName": "nvidiagpudriver",
+        "Extract": true
+      }
+    },
+    {
+      "Type": "CudaAndNvidiaGPUDriverInstallation",
+      "Parameters": {
+        "Scenario": "InstallNvidiaGPUDriver",
+        "PackageName": "nvidiagpudriver",
+        "Username": "$.Parameters.Username",
+        "LinuxLocalRunFile": "$.Parameters.LinuxLocalRunFile",
+        "LinuxCudaVersion": "$.Parameters.LinuxCudaVersion",
+        "LinuxDriverVersion": "$.Parameters.LinuxDriverVersion"
+
+      }
+    }
+  ]
+}
