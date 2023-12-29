@@ -65,6 +65,7 @@ namespace VirtualClient.Actions
                     throw new WorkloadException($"Exceptions occurred when trying to parse the workload result of 'SPEcviewperf'.", ErrorReason.WorkloadFailed);
                 }
 
+                // todo: get individual test name
                 metadata = new Dictionary<string, IConvertible> { { "weight", weight }, { "index", index } };
                 metrics.Add(new Metric(metricName, value: fps, unit: "fps", metadata: metadata));
             }
