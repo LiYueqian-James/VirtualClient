@@ -62,6 +62,7 @@ namespace VirtualClient.Actions
         {
             get
             {
+                // return package name
                 return this.Parameters.GetValue<string>(nameof(SpecViewExecutor.PsExecPackageName));
             }
         }
