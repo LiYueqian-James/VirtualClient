@@ -14,7 +14,7 @@
       "Type": "ThreeDMarkExecutor",
       "Parameters": {
         "Scenario": "TimeSpy",
-        "LisenceKey": "$Parameters.LicenseKey",
+        "LisenceKey": "$.Parameters.LisenceKey",
         "PackageName": "3dmark",
         "PsExecPackageName": "pstools",
         "PsExecSession": 2,
@@ -46,7 +46,7 @@
       "Parameters": {
         "Scenario": "InstallPsToolsPackage",
         "BlobContainer": "packages",
-        "BlobName": "pstools.2.51.zip",
+        "BlobName": "pstools-2.51.zip",
         "PackageName": "pstools",
         "Extract": true
       }
