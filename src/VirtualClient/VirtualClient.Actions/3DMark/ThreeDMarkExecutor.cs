@@ -188,12 +188,12 @@ namespace VirtualClient.Actions
                 .AddContext("executable", this.ExecutablePath);
 
             string psexec = this.PlatformSpecifics.Combine(this.psexecDir, "PsExec.exe");
-            string baseArg = @$"-s -i {this.PsExecSession} -w {this.psexecDir} -accepteula -nobanner";
-
+            string baseArg = @$"-i {this.PsExecSession} -w {this.PlatformSpecifics.Combine(this.Package.Path, "3DMark")} -accepteula -nobanner";
+            
             return this.Logger.LogMessageAsync($"{nameof(ThreeDMarkExecutor)}.ExecuteWorkload", relatedContext, async () =>
             {
                 // Point 3DMark to DLC Path
-                using (IProcessProxy process = this.systemManagement.ProcessManager.CreateProcess(psexec, $"{baseArg} {this.ExecutablePath} --path={this.DLCPath}", this.psexecDir))
+                using (IProcessProxy process = this.systemManagement.ProcessManager.CreateProcess(psexec, $"{baseArg} {this.ExecutablePath} --register={this.LisenceKey}", this.psexecDir))
                 {
                     this.CleanupTasks.Add(() => process.SafeKill());
 
@@ -219,7 +219,7 @@ namespace VirtualClient.Actions
                 }
 
                 // Lisence Registry
-                using (IProcessProxy process = this.systemManagement.ProcessManager.CreateProcess(psexec, $"{baseArg} {this.ExecutablePath} --register={this.LisenceKey}", this.psexecDir))
+                using (IProcessProxy process = this.systemManagement.ProcessManager.CreateProcess(psexec, $"{baseArg} {this.ExecutablePath} --path={this.DLCPath}", this.psexecDir))
                 {
                     this.CleanupTasks.Add(() => process.SafeKill());
 

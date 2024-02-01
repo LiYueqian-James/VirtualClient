@@ -46,7 +46,7 @@
       "Parameters": {
         "Scenario": "InstallPsToolsPackage",
         "BlobContainer": "packages",
-        "BlobName": "pstools.2.51.zip",
+        "BlobName": "pstools-2.51.zip",
         "PackageName": "pstools",
         "Extract": true
       }
