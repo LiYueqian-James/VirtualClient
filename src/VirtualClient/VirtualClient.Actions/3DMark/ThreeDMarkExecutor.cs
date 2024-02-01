@@ -188,7 +188,7 @@ namespace VirtualClient.Actions
                 .AddContext("executable", this.ExecutablePath);
 
             string psexec = this.PlatformSpecifics.Combine(this.psexecDir, "PsExec.exe");
-            string baseArg = @$"-s -i {this.PsExecSession} -w {this.psexecDir} -accepteula -nobanner";
+            string baseArg = @$"-i {this.PsExecSession} -w {this.psexecDir} -accepteula -nobanner";
 
             return this.Logger.LogMessageAsync($"{nameof(ThreeDMarkExecutor)}.ExecuteWorkload", relatedContext, async () =>
             {
