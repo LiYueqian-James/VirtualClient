@@ -12,6 +12,7 @@ namespace VirtualClient.Dependencies
     using System.Threading.Tasks;
     using Microsoft.CodeAnalysis;
     using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Identity.Client;
     using Polly;
     using VirtualClient.Common;
     using VirtualClient.Common.Extensions;
@@ -122,21 +123,16 @@ namespace VirtualClient.Dependencies
         {
             return this.Logger.LogMessageAsync($"{this.TypeName}.Execute", telemetryContext, async () =>
             {
-                State installationState = await this.stateManager.GetStateAsync<State>(nameof(AMDGPUDriverInstallation), cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (installationState == null)
+                if (this.Platform == PlatformID.Win32NT)
                 {
-                    if (this.Platform == PlatformID.Win32NT)
+                    if (!await this.IsWindowsAMDDriverInstalled(telemetryContext, cancellationToken).ConfigureAwait(false))
                     {
-                        await this.InstallAMDGPUDriverWindows(telemetryContext, cancellationToken)
-                                   .ConfigureAwait(false);
-
-                        await this.stateManager.SaveStateAsync(nameof(AMDGPUDriverInstallation), new State(), cancellationToken)
-                            .ConfigureAwait(false);
-
+                        await this.InstallAMDGPUDriverWindows(telemetryContext, cancellationToken).ConfigureAwait(false);
                     }
-                    else if (this.Platform == PlatformID.Unix)
+                }
+                else if (this.Platform == PlatformID.Unix)
+                {
+                    if (!await this.IsLinuxAMDDriverInstalled(telemetryContext, cancellationToken).ConfigureAwait(false))
                     {
                         telemetryContext.AddContext("LinuxDistribution", this.linuxDistributionInfo.LinuxDistribution);
 
@@ -156,13 +152,10 @@ namespace VirtualClient.Dependencies
 
                         await this.InstallAMDGPUDriverLinux(telemetryContext, cancellationToken)
                                    .ConfigureAwait(false);
-
-                        await this.stateManager.SaveStateAsync(nameof(AMDGPUDriverInstallation), new State(), cancellationToken)
-                            .ConfigureAwait(false);
                     }
-
-                    VirtualClientRuntime.IsRebootRequested = this.RebootRequired;
                 }
+
+                VirtualClientRuntime.IsRebootRequested = this.RebootRequired;
 
                 if (this.Platform == PlatformID.Unix)
                 {
@@ -408,5 +401,31 @@ namespace VirtualClient.Dependencies
                 process.ThrowIfErrored<DependencyException>(ProcessProxy.DefaultSuccessCodes, errorReason: ErrorReason.DependencyInstallationFailed);
             }
         }
+
+        private async Task<bool> IsWindowsAMDDriverInstalled(EventContext telemetryContext, CancellationToken cancellationToken)
+        {
+            IProcessProxy process = await this.ExecuteCommandAsync("powershell", "amdsmi static|findstr /isp DRIVER_VERSION", Environment.CurrentDirectory, telemetryContext, cancellationToken)
+    .ConfigureAwait(false);
+            string output = process.StandardOutput.ToString();
+            if (!string.IsNullOrEmpty(output))
+            {
+                string driverVersion = process.StandardOutput.ToString().Split(":", StringSplitOptions.TrimEntries)[1];
+
+                this.Logger.LogSystemEvents($"AMD driver {driverVersion} detected", new Dictionary<string, object> { { "driverVersion", driverVersion } }, telemetryContext);
+                return true;
+            }
+
+            return false;
+        }
+
+        private async Task<bool> IsLinuxAMDDriverInstalled(EventContext telemetryContext, CancellationToken cancellationToken)
+        {
+            // work in progress
+            string commandArguments = "static";
+            IProcessProxy process = await this.ExecuteCommandAsync("amdsmi", commandArguments, Environment.CurrentDirectory, telemetryContext, cancellationToken)
+    .ConfigureAwait(false);
+            return false;
+        }
+
     }
 }
