@@ -411,7 +411,7 @@ namespace VirtualClient.Dependencies
             {
                 string driverVersion = process.StandardOutput.ToString().Split(":", StringSplitOptions.TrimEntries)[1];
 
-                this.Logger.LogSystemEvents($"AMD driver {driverVersion} detected", new Dictionary<string, object> { { "driverVersion", driverVersion } }, telemetryContext);
+                this.Logger.LogSystemEvents($"AMD driver {driverVersion} detected", new Dictionary<string, object> { { "DriverVersion", driverVersion } }, telemetryContext);
                 return true;
             }
 
