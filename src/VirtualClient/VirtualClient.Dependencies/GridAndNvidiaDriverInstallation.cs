@@ -166,7 +166,7 @@ namespace VirtualClient.Dependencies
 
         private async Task<bool> CheckIfDriverInstalledAsync(EventContext telemetryContext, CancellationToken cancellationToken)
         {
-            string driverVersionCommand = this.Platform == PlatformID.Unix ? "-c nvidia-smi --query-gpu=driver_version --format=csv,noheader" : "nvidia-smi --query-gpu=driver_version --format=csv,noheader";
+            string driverVersionCommand = this.Platform == PlatformID.Unix ? "-c \"nvidia-smi --query-gpu=driver_version --format=csv,noheader\"" : "nvidia-smi --query-gpu=driver_version --format=csv,noheader";
             string shell = this.Platform == PlatformID.Unix ? "bash" : "powershell";
 
             var process = await this.ExecuteCommandAsync(shell, driverVersionCommand, Environment.CurrentDirectory, telemetryContext, cancellationToken)
