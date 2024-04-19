@@ -5,6 +5,7 @@ namespace VirtualClient.Dependencies
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Extensions.DependencyInjection;
@@ -131,57 +132,63 @@ namespace VirtualClient.Dependencies
 
         private async Task DockerInstallInUbuntuAsync(EventContext telemetryContext, CancellationToken cancellationToken)
         {
-            string updateAptPackageCommand = "apt update";
-            string requiredPackagesCommand = "apt-get install ca-certificates curl gnupg lsb-release --yes --quiet";
-            string addOfficialGPGKeyCommand = @"bash -c ""curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --batch --yes""";
-            string setUpRepositoryCommand = 
-                @"bash -c ""echo """"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"""" " +
-                @"| sudo tee /etc/apt/sources.list.d/docker.list > /dev/null""";
+            bool isDockerInstalled = await this.CheckIfDockerInstalledAsync(telemetryContext, cancellationToken);
 
-            await this.ExecuteCommandAsync(updateAptPackageCommand, Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                .ConfigureAwait(false);
+            if (!isDockerInstalled)
+            {
+                string updateAptPackageCommand = "apt update";
+                string requiredPackagesCommand = "apt-get install ca-certificates curl gnupg lsb-release --yes --quiet";
+                string addOfficialGPGKeyCommand = @"bash -c ""curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --batch --yes""";
+                string setUpRepositoryCommand =
+                    @"bash -c ""echo """"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"""" " +
+                    @"| sudo tee /etc/apt/sources.list.d/docker.list > /dev/null""";
 
-            await this.ExecuteCommandAsync(requiredPackagesCommand, Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                .ConfigureAwait(false);
+                await this.ExecuteCommandAsync(updateAptPackageCommand, null, Environment.CurrentDirectory, telemetryContext, cancellationToken, true)
+                    .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync("mkdir -p /etc/apt/keyrings", Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                .ConfigureAwait(false);
+                await this.ExecuteCommandAsync(requiredPackagesCommand, null, Environment.CurrentDirectory, telemetryContext, cancellationToken, true)
+                    .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync(addOfficialGPGKeyCommand, Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                .ConfigureAwait(false);
+                await this.ExecuteCommandAsync("mkdir -p /etc/apt/keyrings", null, Environment.CurrentDirectory, telemetryContext, cancellationToken, true)
+                    .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync(setUpRepositoryCommand, Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                .ConfigureAwait(false);
+                await this.ExecuteCommandAsync(addOfficialGPGKeyCommand, null, Environment.CurrentDirectory, telemetryContext, cancellationToken, true)
+                    .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync(updateAptPackageCommand, Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                .ConfigureAwait(false);
+                await this.ExecuteCommandAsync(setUpRepositoryCommand, null, Environment.CurrentDirectory, telemetryContext, cancellationToken, true)
+                    .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync(this.installDockerCommand, Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                .ConfigureAwait(false);
+                await this.ExecuteCommandAsync(updateAptPackageCommand, null, Environment.CurrentDirectory, telemetryContext, cancellationToken, true)
+                    .ConfigureAwait(false);
+
+                await this.ExecuteCommandAsync(this.installDockerCommand, null, Environment.CurrentDirectory, telemetryContext, cancellationToken, true)
+                    .ConfigureAwait(false);
+
+                isDockerInstalled = await this.CheckIfDockerInstalledAsync(telemetryContext, cancellationToken);
+
+                if (!isDockerInstalled)
+                {
+                    throw new DependencyException("Failed to install Docker");
+                }
+            }
         }
 
-        private Task ExecuteCommandAsync(string commandLine, string workingDirectory, EventContext telemetryContext, CancellationToken cancellationToken)
+        private async Task<bool> CheckIfDockerInstalledAsync(EventContext telemetryContext, CancellationToken cancellationToken)
         {
-            return this.RetryPolicy.ExecuteAsync(async () =>
+            var process = await this.ExecuteCommandAsync("bash -c \"docker --version\"", null, Environment.CurrentDirectory, telemetryContext, cancellationToken, true)
+                .ConfigureAwait(false);
+
+            if (ProcessProxy.DefaultSuccessCodes.Contains(process.ExitCode))
             {
-                string output = string.Empty;
-                using (IProcessProxy process = this.systemManager.ProcessManager.CreateElevatedProcess(this.Platform, commandLine, null, workingDirectory))
-                {
-                    this.CleanupTasks.Add(() => process.SafeKill());
-                    this.LogProcessTrace(process);
+                string output = process.StandardOutput.ToString();
+                this.Logger.LogSystemEvents($"Docker detected: {output}", new Dictionary<string, object> { { "Docker", output } }, telemetryContext);
 
-                    await process.StartAndWaitAsync(cancellationToken)
-                        .ConfigureAwait(false);
-
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        await this.LogProcessDetailsAsync(process, telemetryContext)
-                            .ConfigureAwait(false);
-
-                        process.ThrowIfErrored<DependencyException>(errorReason: ErrorReason.DependencyInstallationFailed);
-                    }
-                }
-            });
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
     }
 }

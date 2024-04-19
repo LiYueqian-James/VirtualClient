@@ -12,13 +12,17 @@ namespace VirtualClient.Dependencies
     using System.Threading.Tasks;
     using MathNet.Numerics.OdeSolvers;
     using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Logging;
     using Polly;
     using VirtualClient.Common;
     using VirtualClient.Common.Extensions;
     using VirtualClient.Common.Telemetry;
     using VirtualClient.Contracts;
 
-    internal class GridAndNvidiaDriverInstallation : VirtualClientComponent
+    /// <summary>
+    /// Provides functionality for installing Nvidia Grid GPU driver.
+    /// </summary>
+    public class GridAndNvidiaDriverInstallation : NvidiaGPUDriverInstallation
     {
         private ISystemManagement systemManager;
 
@@ -30,24 +34,7 @@ namespace VirtualClient.Dependencies
         public GridAndNvidiaDriverInstallation(IServiceCollection dependencies, IDictionary<string, IConvertible> parameters)
             : base(dependencies, parameters)
         {
-            this.RetryPolicy = Policy.Handle<Exception>().WaitAndRetryAsync(5, (retries) => TimeSpan.FromSeconds(retries + 1));
             this.systemManager = dependencies.GetService<ISystemManagement>();
-        }
-
-        /// <summary>
-        /// The version of GRID driver to be installed.
-        /// </summary>
-        public string DriverVersion
-        {
-            get
-            {
-                return this.Parameters.GetValue<string>(nameof(GridAndNvidiaDriverInstallation.DriverVersion), string.Empty);
-            }
-
-            set
-            {
-                this.Parameters[nameof(GridAndNvidiaDriverInstallation.DriverVersion)] = value;
-            }
         }
 
         /// <summary>
@@ -57,7 +44,7 @@ namespace VirtualClient.Dependencies
         {
             get
             {
-                return this.Parameters.GetValue<string>(nameof(GridAndNvidiaDriverInstallation.AzureRepository), string.Empty);
+                return this.Parameters.GetValue<string>(nameof(GridAndNvidiaDriverInstallation.AzureRepository), "https://raw.githubusercontent.com/Azure/azhpc-extensions/master/NvidiaGPU/resources.json");
             }
 
             set
@@ -81,31 +68,6 @@ namespace VirtualClient.Dependencies
                 this.Parameters[nameof(GridAndNvidiaDriverInstallation.ForwardLink)] = value;
             }
         }
-
-        /// <summary>
-        /// Determines whether Reboot is required or not after Driver installation.
-        /// </summary>
-        public bool RebootRequired
-        {
-            get
-            {
-                switch (this.Platform)
-                {
-                    case PlatformID.Unix:
-                    case PlatformID.Win32NT:
-                        return this.Parameters.GetValue<bool>(nameof(GridAndNvidiaDriverInstallation.RebootRequired), false);
-
-                    default:
-                        return this.Parameters.GetValue<bool>(nameof(GridAndNvidiaDriverInstallation.RebootRequired), true);
-                }
-            }
-        }
-
-        /// <summary>
-        /// A policy that defines how the component will retry when
-        /// it experiences transient issues.
-        /// </summary>
-        public IAsyncPolicy RetryPolicy { get; set; }
 
         /// <summary>
         /// Executes GRID driver installation steps.
@@ -142,6 +104,8 @@ namespace VirtualClient.Dependencies
                                 ErrorReason.LinuxDistributionNotSupported);
                     }
 
+                    await this.HoldKernelPackage(linuxDistributionInfo.LinuxDistribution, telemetryContext, cancellationToken);
+
                     await this.InstallGridDriverAsync(linuxDistributionInfo, telemetryContext, cancellationToken)
                         .ConfigureAwait(false);
                 }
@@ -164,25 +128,6 @@ namespace VirtualClient.Dependencies
             this.Logger.LogTraceMessage($"{this.TypeName}.ExecutionCompleted", telemetryContext);
         }
 
-        private async Task<bool> CheckIfDriverInstalledAsync(EventContext telemetryContext, CancellationToken cancellationToken)
-        {
-            string driverVersionCommand = this.Platform == PlatformID.Unix ? "-c nvidia-smi --query-gpu=driver_version --format=csv,noheader" : "nvidia-smi --query-gpu=driver_version --format=csv,noheader";
-            string shell = this.Platform == PlatformID.Unix ? "bash" : "powershell";
-
-            var process = await this.ExecuteCommandAsync(shell, driverVersionCommand, Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (ProcessProxy.DefaultSuccessCodes.Contains(process.ExitCode))
-            {
-                this.Logger.LogSystemEvents($"NVIDIA driver detected", new Dictionary<string, object> { { "DriverVersion", process.StandardOutput.ToString().Trim() } }, telemetryContext);
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
         private async Task InstallGridDriverAsync(LinuxDistributionInfo linuxDistributionInfo, EventContext telemetryContext, CancellationToken cancellationToken)
         {
             List<string> prerequisiteCommands = this.PrerequisiteCommands(linuxDistributionInfo.LinuxDistribution);
@@ -198,7 +143,7 @@ namespace VirtualClient.Dependencies
             {
                 foreach (string command in commandsList)
                 {
-                    await this.ExecuteCommandAsync(command, null, Environment.CurrentDirectory, telemetryContext, cancellationToken)
+                    await this.ExecuteCommandAsync(command, null, Environment.CurrentDirectory, telemetryContext, cancellationToken, true)
                         .ConfigureAwait(false);
                 }
             }
@@ -224,7 +169,7 @@ namespace VirtualClient.Dependencies
                     commands.Add("yum check-update");
                     commands.Add("dnf install make automake gcc gcc-c++ kernel-devel");
                     commands.Add("yum install epel-release");
-                    commands.Add("yum install jq");
+                    commands.Add("yum install jq --yes");
                     break;
             }
 
@@ -237,11 +182,6 @@ namespace VirtualClient.Dependencies
 
             if (string.IsNullOrEmpty(this.ForwardLink))
             {
-                if (string.IsNullOrEmpty(this.AzureRepository))
-                {
-                    throw new DependencyException("Failed to find Linux local run file.");
-                }
-
                 string osDistribution = string.Empty;
                 string osVersion = string.Empty;
 
@@ -274,7 +214,7 @@ namespace VirtualClient.Dependencies
             }
 
             commands.Add("chmod +x NVIDIA-Linux-x86_64-grid.run");
-            commands.Add("./NVIDIA-Linux-x86_64-grid.run -s");
+            commands.Add("./NVIDIA-Linux-x86_64-grid.run --silent");
 
             return commands;
         }
@@ -283,7 +223,16 @@ namespace VirtualClient.Dependencies
         {
             if (string.IsNullOrEmpty(this.ForwardLink))
             {
-                throw new DependencyException("Failed to driver installation forward link.");
+                string curlCommand = $"$response = Invoke-RestMethod -Uri {this.AzureRepository}; " +
+                      @"$filteredResponse = $response.OS | Where-Object { $_.Name -eq 'Windows' } | " +
+                      "ForEach-Object { $_.Version } | Where-Object { $_.Name -eq '2016/10' } | " +
+                      "ForEach-Object { $_.Driver } | Where-Object { $_.Type -eq 'GRID' } | " +
+                      "ForEach-Object { $_.Version } | Where-Object { $_.Num -eq " + $"'{this.DriverVersion}' " + "} | " +
+                      "ForEach-Object { $_.DirLink }; echo $filteredResponse";
+
+                var process = await this.ExecuteCommandAsync("powershell", curlCommand, Environment.CurrentDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+                this.ForwardLink = process.StandardOutput.ToString();
             }
 
             Uri uri = new Uri(this.ForwardLink);
@@ -292,7 +241,7 @@ namespace VirtualClient.Dependencies
             await this.ExecuteCommandAsync("C:\\Windows\\system32\\curl.exe", $"-o {filename} {this.ForwardLink}", Environment.CurrentDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync(filename, "-y -s", Environment.CurrentDirectory, telemetryContext, cancellationToken)
+            await this.ExecuteCommandAsync("powershell", $".\\{filename} -y -s", Environment.CurrentDirectory, telemetryContext, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
