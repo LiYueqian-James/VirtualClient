@@ -76,6 +76,12 @@ namespace VirtualClient
         /// Not implemented.
         /// </summary>
         [SuppressMessage("Design", "CA1065:Do not raise exceptions in unexpected locations", Justification = "We do not need to implement this entire interface.")]
+        public IFileVersionInfoFactory FileVersionInfo => throw new NotImplementedException();
+
+        /// <summary>
+        /// Not implemented.
+        /// </summary>
+        [SuppressMessage("Design", "CA1065:Do not raise exceptions in unexpected locations", Justification = "We do not need to implement this entire interface.")]
         public IPath Path => throw new NotImplementedException();
 
         /// <summary>

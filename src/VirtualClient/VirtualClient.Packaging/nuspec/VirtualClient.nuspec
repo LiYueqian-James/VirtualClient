@@ -9,6 +9,7 @@
         <projectUrl>https://github.com/microsoft/VirtualClient</projectUrl>
         <copyright>© Microsoft Corporation. All rights reserved.</copyright>
         <tags>Microsoft Azure VirtualClient Workload Benchmark</tags>
+        <releaseNotes>HPC tuned build. Fixes ThrowOnUsageError false positive on parameter values containing double-dash prefixes (e.g. --silent). Aligns System.IO.Abstractions to 22.0.14 to match VirtualClient.Framework 1.16.42.</releaseNotes>
 
         <dependencies>
             <group targetFramework=".net8.0"></group>
